@@ -1,41 +1,46 @@
 from flask import Flask, render_template, request
 import requests
-import var
 import os
 
 app = Flask(__name__)
 
-def get_weather(api_key, city):
-    base_url = "http://api.openweathermap.org/data/2.5/weather"
+# Read API key from environment variable (Cloud Run / Secret Manager)
+OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY")
+
+if not OPENWEATHER_API_KEY:
+    raise RuntimeError("OPENWEATHER_API_KEY environment variable is not set")
+
+
+def get_weather(city: str):
+    url = "https://api.openweathermap.org/data/2.5/weather"
     params = {
-        'q': city,
-        'appid': api_key,
-        'units': 'metric'  
+        "q": city,
+        "appid": OPENWEATHER_API_KEY,
+        "units": "metric",
     }
 
     try:
-        response = requests.get(base_url, params=params)
-        data = response.json()
+        response = requests.get(url, params=params, timeout=5)
+        response.raise_for_status()
+        return response.json()
 
-        if response.status_code == 200:
-            return data
-        else:
-            return None
-
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching weather data: {e}")
         return None
 
-@app.route('/', methods=['GET', 'POST'])
+
+@app.route("/", methods=["GET", "POST"])
 def index():
-    if request.method == 'POST':
-        city = request.form['city']
-        api_key = var.key
-        weather_data = get_weather(api_key, city)
-        return render_template('index.html', weather_data=weather_data)
-    
-    return render_template('index.html', weather_data=None)
+    weather_data = None
+
+    if request.method == "POST":
+        city = request.form.get("city")
+        if city:
+            weather_data = get_weather(city)
+
+    return render_template("index.html", weather_data=weather_data)
+
 
 if __name__ == "__main__":
-    #app.run(debug=True,port=8080)
-    app.run(port=int(os.environ.get("PORT", 8080)),host='0.0.0.0',debug=True)
-
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
